@@ -50,36 +50,44 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 IMG_SIZE = (224, 224, 160)
 BATCH_SIZE = 8
 NUM_WORKERS = 12
-NUM_EPOCHS = 30
+NUM_EPOCHS = 10
 LEARNING_RATE = 1e-8
 MAX_LR = 1e-5
 PCT_START = 0.1
 PREFATCH_FACTOR = 8
+DROPOUT_RATE = 0.1
 
 # Define transforms with fixed parameters
 train_transforms = transforms.Compose([
     transforms.LoadImaged(keys=["image"], reader="NumpyReader"),
     transforms.EnsureChannelFirstd(keys=["image"]),                    
     transforms.RandFlipd(keys=["image"],
-                        prob=0.5,
+                        prob=0.75,
                         spatial_axis=0),
     transforms.RandFlipd(keys=["image"],
-                        prob=0.5,
+                        prob=0.75,
                         spatial_axis=1),
     transforms.RandFlipd(keys=["image"],
-                        prob=0.5,
+                        prob=0.75,
                         spatial_axis=2),
     # transforms.RandRotate90d(
     #     keys=["image"],
     #     prob=0.5,
     #     max_k=3,
     # ),
+    transforms.RandCoarseDropoutd(
+        keys=["image"],
+        holes=5,
+        max_holes=10,
+        spatial_size=(4, 4, 4),
+        prob=0.25,
+    ),
     transforms.RandScaleIntensityd(keys="image",
                                 factors=0.175,
                                 prob=0.5),
     transforms.RandShiftIntensityd(keys="image",
                                 offsets=0.175,
-                                prob=0.25),
+                                prob=0.5),
     transforms.RandGaussianNoised(keys=['image'], mean=0.075, std=0.35, prob=0.33),
     transforms.SpatialPadd(
         keys=["image"], 
@@ -164,9 +172,14 @@ model.to(device)
 
 # Add classification head
 class ClassificationHead(nn.Module):
-    def __init__(self, in_features=2048):  # Assuming embedding dimension is 768
+    def __init__(self, in_features=2048, hidden_dim=512, dropout_rate=DROPOUT_RATE):
         super().__init__()
-        self.classifier = nn.Linear(in_features, 2)  # Binary classification
+        self.classifier = nn.Sequential(
+            nn.Linear(in_features, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout_rate),
+            nn.Linear(hidden_dim, 2)  # Binary classification
+        )
         
     def forward(self, x):
         return self.classifier(x)
