@@ -64,3 +64,7 @@ for batch in dataloader:
     print(f"\n================== Output Shapes ==================")
     print(f"Image embeddings shape (Can be used for downstream tasks): {outputs[0].shape}")
     
+
+
+
+

@@ -4,3 +4,13 @@
 **/*.egg-info/
 **/checkpoints/
 dist/*
+data/*
+*.npy
+wandb/*
+splits.pkl
+*.ipynb
+*.png
+*.jpg
+*.jpeg
+.*json
+
