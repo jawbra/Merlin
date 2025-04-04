@@ -88,7 +88,7 @@ train_transforms = transforms.Compose([
     transforms.RandShiftIntensityd(keys="image",
                                 offsets=0.175,
                                 prob=0.5),
-    transforms.RandGaussianNoised(keys=['image'], mean=0.075, std=0.35, prob=0.33),
+    transforms.RandGaussianNoised(keys=['image'], mean=0.075, std=0.35, prob=0.5),
     transforms.SpatialPadd(
         keys=["image"], 
         spatial_size=IMG_SIZE
