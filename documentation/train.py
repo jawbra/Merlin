@@ -20,6 +20,16 @@ from torch.cuda.amp import autocast, GradScaler
 from merlin import Merlin
 from monai import transforms
 
+def freeze_encoder(model):
+    """Freeze all parameters in the encoder"""
+    for param in model.parameters():
+        param.requires_grad = False
+
+def unfreeze_encoder(model):
+    """Unfreeze all parameters in the encoder"""
+    for param in model.parameters():
+        param.requires_grad = True
+
 
 warnings.filterwarnings("ignore")
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -72,13 +82,13 @@ train_transforms = transforms.Compose([
     transforms.RandFlipd(keys=["image"],
                         prob=0.75,
                         spatial_axis=2),
-    # transforms.RandCoarseDropoutd(
-    #     keys=["image"],
-    #     holes=5,
-    #     max_holes=10,
-    #     spatial_size=(4, 4, 4),
-    #     prob=0.25,
-    # ),
+    transforms.RandCoarseDropoutd(
+        keys=["image"],
+        holes=5,
+        max_holes=10,
+        spatial_size=(4, 4, 4),
+        prob=0.25,
+    ),
     transforms.RandScaleIntensityd(keys="image",
                                 factors=0.175,
                                 prob=0.5),
