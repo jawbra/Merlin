@@ -13,6 +13,8 @@ import torch
 import random
 from torch.nn import CrossEntropyLoss
 from torch.nn.functional import binary_cross_entropy_with_logits
+from torch.cuda.amp import autocast, GradScaler
+
 
 #from merlin.data import download_sample_data
 from merlin import Merlin
@@ -50,7 +52,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 IMG_SIZE = (224, 224, 160)
 BATCH_SIZE = 8
 NUM_WORKERS = 12
-NUM_EPOCHS = 10
+NUM_EPOCHS = 15
 LEARNING_RATE = 1e-8
 MAX_LR = 1e-5
 PCT_START = 0.1
@@ -70,11 +72,6 @@ train_transforms = transforms.Compose([
     transforms.RandFlipd(keys=["image"],
                         prob=0.75,
                         spatial_axis=2),
-    # transforms.RandRotate90d(
-    #     keys=["image"],
-    #     prob=0.5,
-    #     max_k=3,
-    # ),
     transforms.RandCoarseDropoutd(
         keys=["image"],
         holes=5,
@@ -156,7 +153,9 @@ config = {
     "architecture": "Merlin + Linear Classification Head",
     "optimizer": "Adam",
     "scheduler": "OneCycleLR",
-    "device": str(device)
+    "device": str(device),
+    "mixed_precision": True,
+    "grad_clip_norm": 1.0,
 }
 
 wandb.init(
@@ -210,7 +209,9 @@ scheduler = torch.optim.lr_scheduler.OneCycleLR(
 )
 criterion = CrossEntropyLoss()
 
-# Training loop (modify this section)
+scaler = GradScaler()
+
+# Modify the training loop
 for epoch in range(num_epochs):
     model.train()
     classification_head.train()
@@ -222,27 +223,34 @@ for epoch in range(num_epochs):
     for batch in pbar:
         optimizer.zero_grad()
         
-        # Get image embeddings
-        # images = torch.tensor(np.load(batch["image"][0])).float().to(device)
-        # labels = batch["label"].long().to(device)
         images, labels = batch["image"], batch["label"]
-        # to device
         images = images.to(device)
         labels = labels.to(device)
         
-        embeddings = model(images)
-        logits = classification_head(embeddings)
+        # Use autocast for mixed precision training
+        with autocast():
+            embeddings = model(images)
+            logits = classification_head(embeddings)
+            loss = criterion(logits.squeeze(0), labels.long())
         
-        loss = criterion(logits.squeeze(0), labels.long())
-        loss.backward()
-        optimizer.step()
-        scheduler.step()  # Step the scheduler
+        # Scale loss and call backward
+        scaler.scale(loss).backward()
         
-        current_lr = scheduler.get_last_lr()[0]  # Get current learning rate
+        # Unscale gradients and clip them
+        scaler.unscale_(optimizer)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(classification_head.parameters(), max_norm=1.0)
         
+        # Step optimizer and update scaler
+        scaler.step(optimizer)
+        scaler.update()
+        scheduler.step()
         
+        current_lr = scheduler.get_last_lr()[0]
+        
+        # Rest remains the same
         batch_preds = torch.argmax(logits.squeeze(0), dim=1).cpu().numpy()
-        batch_labels = labels.cpu().numpy()  # Convert labels to numpy
+        batch_labels = labels.cpu().numpy()
         
         all_preds.extend(batch_preds)
         all_labels.extend(batch_labels)
@@ -251,17 +259,17 @@ for epoch in range(num_epochs):
         
         pbar.set_postfix({
             'loss': f'{loss.item():.4f}',
-            'lr': f'{current_lr:.2e}'  # Add learning rate to progress bar
+            'lr': f'{current_lr:.2e}'
         })
 
-    # Validation
+    # Validation loop with mixed precision
     model.eval()
     classification_head.eval()
     val_loss = 0
     val_preds = []
     val_labels = []
     
-    with torch.no_grad():
+    with torch.no_grad(), autocast():
         for batch in val_loader:
             images, labels = batch["image"], batch["label"]
             images = images.to(device)
@@ -269,12 +277,11 @@ for epoch in range(num_epochs):
             
             embeddings = model(images)
             logits = classification_head(embeddings)
-            
             loss = criterion(logits.squeeze(0), labels.long())
             val_loss += loss.item()
             
             batch_preds = torch.argmax(logits.squeeze(0), dim=1).cpu().numpy()
-            batch_labels = labels.cpu().numpy()  # Convert labels to numpy
+            batch_labels = labels.cpu().numpy()
             
             val_preds.extend(batch_preds)
             val_labels.extend(batch_labels)
