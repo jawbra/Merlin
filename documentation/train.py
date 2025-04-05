@@ -87,7 +87,7 @@ train_transforms = transforms.Compose([
         holes=5,
         max_holes=10,
         spatial_size=(4, 4, 4),
-        prob=0.25,
+        prob=0.5,
     ),
     transforms.RandScaleIntensityd(keys="image",
                                 factors=0.175,
@@ -95,7 +95,7 @@ train_transforms = transforms.Compose([
     transforms.RandShiftIntensityd(keys="image",
                                 offsets=0.175,
                                 prob=0.5),
-    transforms.RandGaussianNoised(keys=['image'], mean=0.075, std=0.35, prob=0.5),
+    transforms.RandGaussianNoised(keys=['image'], mean=0.075, std=0.35, prob=0.66),
     transforms.SpatialPadd(
         keys=["image"], 
         spatial_size=IMG_SIZE
